@@ -1,0 +1,165 @@
+---
+title: "Data Wrangling Project"
+author: "Lichen Yan"
+date: "5/2/2021"
+output: html_document
+---
+### dataset: https://www.kaggle.com/yannisp/uber-pickups-enriched
+### Import packages
+```{r}
+library(ggplot2)
+library(ggthemes)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(knitr)
+```
+
+### Read the table and droping the columns that we don't need. 
+```{r}
+uber_nyc <- read.csv(file = "uber_nyc_enriched.csv")
+head(uber_nyc)
+uber_nyc <- select(uber_nyc, -c("spd", "vsb", "dewp", "slp", "pcp01", "pcp06", "pcp24"))
+head(uber_nyc)
+```
+
+### Create servel new variables hour, day, dayofweek, month, year by the existing column pickup_dt. Then drop the Time and pickup_dt columns. 
+```{r}
+uber_nyc$Time <- format(as.POSIXct(uber_nyc$pickup_dt, format = "%Y-%m-%d %H:%M:%S"), format="%H:%M:%S")
+
+uber_nyc$pickup_dt <- ymd_hms(uber_nyc$pickup_dt)
+uber_nyc$day <- factor(day(uber_nyc$pickup_dt))
+uber_nyc$month <- factor(month(uber_nyc$pickup_dt, label = TRUE))
+uber_nyc$year <- factor(year(uber_nyc$pickup_dt))
+uber_nyc$dayofweek <- factor(wday(uber_nyc$pickup_dt, label = TRUE))
+uber_nyc$hour <- factor(hour(hms(uber_nyc$Time)))
+uber_nyc$temp <- as.integer(uber_nyc$temp)
+uber_nyc$sd <- as.integer(uber_nyc$sd)
+uber_nyc <- select(uber_nyc, -c("Time", "pickup_dt"))
+```
+
+### Clean the data by drop all the NAs. 
+```{r}
+uber_nyc <- uber_nyc %>% drop_na()
+head(uber_nyc)
+```
+### Creating a plot by hours in a day
+```{r}
+hour_data <- uber_nyc %>%
+           group_by(hour) %>%
+               dplyr::summarize(Total = sum(pickups))
+ggplot(hour_data, aes(hour, Total)) + 
+        geom_bar( stat = "identity", fill = "steelblue") +
+           ggtitle("Pickups Every Hour") +
+            theme(legend.position = "none") +
+            scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by hours and month
+```{r}
+month_hour <- uber_nyc %>%
+          group_by(month, hour) %>%
+             dplyr::summarize(Total = sum(pickups))
+
+ggplot(month_hour, aes(hour, Total, fill = month)) + 
+       geom_bar( stat = "identity", position='dodge') +
+          ggtitle("Pickups by Hour and Month") +
+           scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by day
+```{r}
+day_group <- uber_nyc %>%
+          group_by(day) %>%
+             dplyr::summarize(Total = sum(pickups)) 
+
+ggplot(day_group, aes(day, Total)) + 
+        geom_bar( stat = "identity", fill = "steelblue") +
+           ggtitle("Pickups Every Day") +
+            theme(legend.position = "none") +
+            scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by dayofweek and month
+```{r}
+dayofweek_month_group <- uber_nyc %>%
+         group_by(month, dayofweek) %>%
+             dplyr::summarize(Total = sum(pickups))
+
+ggplot(dayofweek_month_group, aes(month, Total, fill = dayofweek)) + 
+        geom_bar( stat = "identity", position='dodge') +
+           ggtitle("Pickups by Dayofweek and Month") +
+            scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by month
+```{r}
+month_group <- uber_nyc %>%
+          group_by(month) %>%
+             dplyr::summarize(Total = sum(pickups)) 
+
+ggplot(month_group , aes(month, Total, fill = month)) + 
+        geom_bar(stat = "identity", position='dodge') +
+           ggtitle("Pickups by Month") +
+            theme(legend.position = "none") +
+            scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by Temp
+```{r}
+temp_group <- uber_nyc %>%
+          group_by(temp) %>%
+             dplyr::summarize(Total = sum(pickups)/n()) 
+
+ggplot(temp_group, aes(temp, Total)) + 
+        geom_bar(stat = "identity", position='dodge') +
+           ggtitle("Average pickups by Temp") +
+            theme(legend.position = "none") +
+            scale_y_continuous(labels = comma)
+```
+### Creating a plot by Snow depth
+```{r}
+temp_group <- uber_nyc %>%
+          group_by(sd) %>%
+             dplyr::summarize(Total = sum(pickups)/n()) 
+
+ggplot(temp_group, aes(sd, Total)) + 
+        geom_bar(stat = "identity", position='dodge') +
+           ggtitle("Average pickups by sd") +
+            theme(legend.position = "none") +
+            scale_y_continuous(labels = comma)
+```
+
+### Creating a plot by county
+```{r}
+county_group <- uber_nyc %>%
+          group_by(borough) %>%
+             dplyr::summarize(Total = sum(pickups))
+
+ggplot(county_group, aes(borough, Total)) + 
+  geom_bar(stat = "identity", position='dodge') +
+ scale_y_continuous(labels = comma) +
+ ggtitle("Pickups by Borough")
+```
+
+### Creating a plot by county and dayofweek
+```{r}
+county_dayofweek_group <- uber_nyc %>%
+          group_by(borough, dayofweek) %>%
+             dplyr::summarize(Total = sum(pickups)) 
+
+ggplot(county_dayofweek_group, aes(borough, Total, fill = dayofweek)) + 
+ geom_bar(stat = "identity", position = "dodge") +
+ scale_y_continuous(labels = comma) +
+ ggtitle("Pickups by Borough and DayofWeek")
+```
+
+### Separate the data by holiday or not and giving the hypnosis that people are more likely to not take uber will on holiday.
+```{r}
+uber_nyc_Y <- subset(uber_nyc, hday %in% c("Y"))
+uber_nyc_N <- subset(uber_nyc, hday %in% c("N"))
+
+t.test(uber_nyc_N$pickups, uber_nyc_Y$pickups, alternative = "two.sided", conf.level = 0.95)
+```
+
